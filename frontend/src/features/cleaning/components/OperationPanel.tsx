@@ -1,0 +1,32 @@
+import { useState } from 'react'
+import { Eye, Sparkles } from 'lucide-react'
+import { Button } from '../../../components/ui/Button'
+import { Select } from '../../../components/ui/Select'
+import type { ColumnProfile, Operation } from '../../../types'
+
+export function OperationPanel({ columns, revision, busy, onPreview }: { columns: ColumnProfile[]; revision: number; busy: boolean; onPreview: (op: Operation) => void }) {
+  const [operation, setOperation] = useState('fill_missing'); const [column, setColumn] = useState(''); const [strategy, setStrategy] = useState('median'); const [action, setAction] = useState('trim'); const [custom, setCustom] = useState(''); const [oldValue, setOldValue] = useState(''); const [newValue, setNewValue] = useState(''); const [filterOperator, setFilterOperator] = useState('eq')
+  const selectColumns = column ? [column] : []
+  const config = (): Operation => operation === 'fill_missing'
+    ? { operation, columns: selectColumns, parameters: { strategy, ...(strategy === 'custom' ? { value: custom } : {}) }, expected_revision: revision }
+    : operation === 'drop_duplicates' ? { operation, columns: selectColumns, parameters: { keep: 'first' }, expected_revision: revision }
+      : operation === 'text_cleanup' ? { operation, columns: selectColumns, parameters: { action, ...(action === 'replace' ? { old: oldValue, new: newValue } : {}) }, expected_revision: revision }
+        : operation === 'convert_type' ? { operation, columns: selectColumns, parameters: { target: action }, expected_revision: revision }
+          : operation === 'map_categories' ? { operation, columns: selectColumns, parameters: { mapping: { [oldValue]: newValue } }, expected_revision: revision }
+            : operation === 'filter_rows' ? { operation, columns: selectColumns, parameters: { operator: filterOperator, value: custom }, expected_revision: revision }
+              : { operation: 'outliers', columns: selectColumns.filter(c => columns.find(x => x.name === c)?.inferred_type === 'numeric'), parameters: { method: 'iqr', action }, expected_revision: revision }
+  const onOperation = (value: string) => { setOperation(value); setAction(value === 'convert_type' ? 'number' : 'trim') }
+  return <section className="operation-panel"><div className="panel-title"><div className="small-icon"><Sparkles size={16}/></div><div><span className="eyebrow">CLEAN YOUR DATA</span><h3>Choose an operation</h3></div></div>
+    <label>Operation<Select value={operation} onChange={e => onOperation(e.target.value)}><option value="fill_missing">Resolve empty cells</option><option value="drop_duplicates">Remove duplicate rows</option><option value="text_cleanup">Clean text values</option><option value="map_categories">Map a category</option><option value="convert_type">Change data type</option><option value="filter_rows">Filter rows</option><option value="outliers">Review outliers</option></Select></label>
+    <label>Column <span className="optional">{operation === 'filter_rows' ? '(choose one)' : '(leave empty for all)'}</span><Select value={column} onChange={e => setColumn(e.target.value)}><option value="">{operation === 'filter_rows' ? 'Choose a column' : 'All applicable columns'}</option>{columns.map(c => <option key={c.name} value={c.name}>{c.name}</option>)}</Select></label>
+    {operation === 'fill_missing' && <label>Fill method<Select value={strategy} onChange={e => setStrategy(e.target.value)}><option value="median">Median (numbers)</option><option value="mean">Mean (numbers)</option><option value="mode">Most common value</option><option value="custom">Custom value</option><option value="drop_rows">Remove rows with empty cells</option><option value="drop_columns">Remove selected columns</option></Select></label>}
+    {operation === 'fill_missing' && strategy === 'custom' && <label>Replacement value<input className="input" value={custom} onChange={e => setCustom(e.target.value)} placeholder="Enter a value"/></label>}
+    {operation === 'text_cleanup' && <label>Text action<Select value={action} onChange={e => setAction(e.target.value)}><option value="trim">Trim extra spaces</option><option value="collapse_spaces">Collapse repeated spaces</option><option value="lower">Lowercase</option><option value="upper">Uppercase</option><option value="replace">Replace literal text</option></Select></label>}
+    {operation === 'text_cleanup' && action === 'replace' && <><label>Find text<input className="input" value={oldValue} onChange={e => setOldValue(e.target.value)} placeholder="Find exactly"/></label><label>Replace with<input className="input" value={newValue} onChange={e => setNewValue(e.target.value)}/></label></>}
+    {operation === 'map_categories' && <><label>Value to replace<input className="input" value={oldValue} onChange={e => setOldValue(e.target.value)} placeholder="e.g. male"/></label><label>Replace with<input className="input" value={newValue} onChange={e => setNewValue(e.target.value)} placeholder="e.g. Male"/></label></>}
+    {operation === 'filter_rows' && <><label>Comparison<Select value={filterOperator} onChange={e => setFilterOperator(e.target.value)}><option value="eq">Equals</option><option value="neq">Does not equal</option><option value="contains">Contains</option><option value="gt">Greater than</option><option value="gte">At least</option><option value="lt">Less than</option><option value="lte">At most</option><option value="empty">Is empty</option><option value="not_empty">Is not empty</option></Select></label>{!['empty', 'not_empty'].includes(filterOperator) && <label>Match value<input className="input" value={custom} onChange={e => setCustom(e.target.value)} placeholder="Enter a value"/></label>}</>}
+    {operation === 'convert_type' && <label>Convert to<Select value={action} onChange={e => setAction(e.target.value)}><option value="number">Number</option><option value="date">Date</option><option value="text">Text</option></Select></label>}
+    {operation === 'outliers' && <label>Outlier action<Select value={action} onChange={e => setAction(e.target.value)}><option value="flag">Flag for review</option><option value="cap">Cap to IQR limits</option><option value="remove">Remove rows</option></Select></label>}
+    <div className="operation-hint">Your original upload stays available throughout this workspace.</div><Button onClick={() => onPreview(config())} disabled={busy}><Eye size={16}/> Preview change</Button>
+  </section>
+}
